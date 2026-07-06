@@ -173,3 +173,11 @@ PMG_DMACTL_VALUE = $2E    ; full correct DMACTL value, not just one bit:
                           ;         for ANY playfield to show at all!)                    
 
 shipX = $B1        ; tracks Beowulf's current X position
+
+; =====================================================================
+; Joystick input
+; The OS polls the joystick hardware every frame and stores the
+; debounced result here for us — no need to touch the PIA directly.
+; =====================================================================
+STICK0  = $0278     ; joystick 1 direction bits, ACTIVE LOW (0=pressed):
+                    ; bit 0 = Up, bit 1 = Down, bit 2 = Left, bit 3 = Right

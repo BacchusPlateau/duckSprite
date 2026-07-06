@@ -22,13 +22,28 @@
 
 keepDucking:
         lda shipX               ; a = shipX
-        cmp #120                ; a == 120?
-        beq stop                ; if equal, jump OUT
-
-        sta HPOSP0               ; push shipX to Player 0's horizontal position
+        sta HPOSP0              ; push shipX to Player 0's horizontal position
 
         ; --- pick this step's walk-cycle frame ---
         ; even shipX -> duckShape1, odd shipX -> duckShape2
+
+        lda STICK0
+        and #%00000100      ; isolate bit 2 (Left)
+        beq isLeft
+        jmp checkRight
+isLeft:
+        dec shipX
+
+checkRight:
+        lda STICK0
+        and #%00001000      ; isolate bit 3 (Right)
+        beq isRight
+        jmp doneReading
+isRight:
+        inc shipX
+
+doneReading:
+
         lda shipX
         and #%00000001           ; isolate bit 0 (the "is it odd" bit)
         beq useFrame1
@@ -48,7 +63,6 @@ useFrame1:
 doLoad:
         jsr loadDuckFrame        ; copy whichever table we just pointed at
 
-        inc shipX                ; shipX++
         lda #$1E                 ; TODO: this should be a variable in equates
         sta COLPM0                ; color for Player 0
 
