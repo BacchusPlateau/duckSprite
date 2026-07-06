@@ -37,20 +37,36 @@ loadNoCarry:
         ; set the ship's STARTING position only — waitFrames will
         ; keep re-asserting these registers continuously from here on
         mva #90 shipX
-        lda shipX
-        sta HPOSP0
-        lda #$1E
-        sta COLPM0
+        ;lda shipX
+        ;sta HPOSP0
+        ;lda #$1E
+        ;sta COLPM0
 
-        ldx #50
-        jsr waitFrames           ; holds here ~1 second, refreshing
+        ;ldx #10
+        ;jsr waitFrames           ; holds here ~1 second, refreshing
                                 ; HPOSP0/COLPM0 every frame internally
 
         ; shipX is CHANGING here, so we explicitly update it —
         ; but we don't need to also write HPOSP0/COLPM0 right after,
         ; because the NEXT waitFrames call will pick up the new
         ; shipX value automatically and keep refreshing it
-        mva #120 shipX
+        ;mva #120 shipX
+keepDucking:
+       
+        lda shipX               ; a = shipX
+        cmp #120                ; a == 120?
+        beq stop                ; if equal, jumpt OUT
+
+        sta HPOSP0              ; push shipX to the horizontal position for sprite player zero P0
+        inc shipX               ; shipX++
+        lda #$1E                ; TODO: this should be a variable in equates, why the magic string? 
+        sta COLPM0              ; COLPM0 is the color register for Player 0 
+
+        ldx #10                 ; this seems to be a good value?
+        jsr waitFrames           ; holds here ~1 second, refreshing
+                                 ; HPOSP0/COLPM0 every frame internally
+        jmp keepDucking        
+
 
 stop:
         jsr fightAttract
@@ -72,14 +88,14 @@ stop:
         ; whatever you put here, add/remove rows as you like.
         .local duckShape
         .byte %00111100     ; row 0  - crown of head
-        .byte %01111110     ; row 1  - head
+        .byte %01110100     ; row 1  - head
         .byte %01111111     ; row 2  - head, eye level
-        .byte %01111111     ; row 3  - beak
-        .byte %01111110     ; row 4  - chin, head narrows
-        .byte %00111100     ; row 5  - neck
-        .byte %00111100     ; row 6  - neck/body transition
-        .byte %01111110     ; row 7  - body widening
-        .byte %11111111     ; row 8  - body, max width
+        .byte %01111110     ; row 3  - beak
+        .byte %01111101     ; row 4  - chin, head narrows
+        .byte %00111000     ; row 5  - neck
+        .byte %00111000     ; row 6  - neck/body transition
+        .byte %00111000     ; row 7  - body widening
+        .byte %00111000     ; row 8  - body, max width
         .byte %11111111     ; row 9  - body, max width
         .byte %11111111     ; row 10 - body
         .byte %01111110     ; row 11 - body narrowing

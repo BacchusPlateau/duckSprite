@@ -1643,7 +1643,7 @@ Source: routines.asm
      5
      6 2000			 .proc main
      7
-     8 2000-2062> 20 9F 33	        jsr openGR8
+     8 2000-2067> 20 9F 33	        jsr openGR8
      9 2003 20 18 30		        jsr initPMG
     10
     11 				        ; point scrptr at Player 0's section, offset 16 (visible Y start)
@@ -1660,7 +1660,7 @@ Source: routines.asm
     22
     23 2018 A2 00		        ldx #0
     24 201A			loadDuck:
-    25 201A BD 53 20		        lda duckShape,x
+    25 201A BD 58 20		        lda duckShape,x
     26 201D A0 00		        ldy #0
     27 201F 91 85		        sta (scrptr_lo),y
     28
@@ -1675,57 +1675,73 @@ Source: routines.asm
     37 				        ; set the ship's STARTING position only — waitFrames will
     38 				        ; keep re-asserting these registers continuously from here on
     39 202C A9 5A 85 B1		        mva #90 shipX
-    40 2030 A5 B1		        lda shipX
-    41 2032 8D 00 D0		        sta HPOSP0
-    42 2035 A9 1E		        lda #$1E
-    43 2037 8D 12 D0		        sta COLPM0
+    40 				        ;lda shipX
+    41 				        ;sta HPOSP0
+    42 				        ;lda #$1E
+    43 				        ;sta COLPM0
     44
-    45 203A A2 32		        ldx #50
-    46 203C 20 00 32		        jsr waitFrames           ; holds here ~1 second, refreshing
+    45 				        ;ldx #10
+    46 				        ;jsr waitFrames           ; holds here ~1 second, refreshing
     47 				                                ; HPOSP0/COLPM0 every frame internally
     48
     49 				        ; shipX is CHANGING here, so we explicitly update it —
     50 				        ; but we don't need to also write HPOSP0/COLPM0 right after,
     51 				        ; because the NEXT waitFrames call will pick up the new
     52 				        ; shipX value automatically and keep refreshing it
-    53 203F A9 78 85 B1		        mva #120 shipX
-    54
-    55 2043			stop:
-    56 2043 20 7D 33		        jsr fightAttract
-    57 2046 A5 B1		        lda shipX
-    58 2048 8D 00 D0		        sta HPOSP0               ; stop loop also needs to refresh,
-    59 204B A9 1E		        lda #$1E                ; since it's another long-running
-    60 204D 8D 12 D0		        sta COLPM0               ; loop with the same characteristics
-    61 2050 4C 43 20		        jmp stop
-    62
-    63 				        .endp
+    53 				        ;mva #120 shipX
+    54 2030			keepDucking:
+    55 				       
+    56 2030 A5 B1		        lda shipX               ; a = shipX
+    57 2032 C9 78		        cmp #120                ; a == 120?
+    58 2034 F0 12		        beq stop                ; if equal, jumpt OUT
+    59
+    60 2036 8D 00 D0		        sta HPOSP0              ; push shipX to the horizontal position for sprite player zero P0
+    61 2039 E6 B1		        inc shipX               ; shipX++
+    62 203B A9 1E		        lda #$1E                ; TODO: this should be a variable in equates, why the magic string? 
+    63 203D 8D 12 D0		        sta COLPM0              ; COLPM0 is the color register for Player 0 
     64
-    65 				        
-    66 				; Data section
-    67 				;===================================================================
-    68
-    69 				        ; Bit order: bit 7 (leftmost) = screen-left, bit 0 (rightmost) =
-    70 				        ; screen-right, same convention as beowulfShape. Row count is
-    71 				        ; free — .len duckShape in the load loop above picks up
-    72 				        ; whatever you put here, add/remove rows as you like.
-    73 2053			        .local duckShape
-    74 2053 3C			        .byte %00111100     ; row 0  - crown of head
-    75 2054 7E			        .byte %01111110     ; row 1  - head
-    76 2055 7F			        .byte %01111111     ; row 2  - head, eye level
-    77 2056 7F			        .byte %01111111     ; row 3  - beak
-    78 2057 7E			        .byte %01111110     ; row 4  - chin, head narrows
-    79 2058 3C			        .byte %00111100     ; row 5  - neck
-    80 2059 3C			        .byte %00111100     ; row 6  - neck/body transition
-    81 205A 7E			        .byte %01111110     ; row 7  - body widening
-    82 205B FF			        .byte %11111111     ; row 8  - body, max width
-    83 205C FF			        .byte %11111111     ; row 9  - body, max width
-    84 205D FF			        .byte %11111111     ; row 10 - body
-    85 205E 7E			        .byte %01111110     ; row 11 - body narrowing
-    86 205F 3C			        .byte %00111100     ; row 12 - tail / body bottom
-    87 2060 24			        .byte %00100100     ; row 13 - legs
-    88 2061 24			        .byte %00100100     ; row 14 - legs
-    89 2062 66			        .byte %01100110     ; row 15 - webbed feet
-    90 				        .endl
-    91
-    92
-    93 02E0-02E1> 00 20		        run main
+    65 2040 A2 0A		        ldx #10                 ; this seems to be a good value?
+    66 2042 20 00 32		        jsr waitFrames           ; holds here ~1 second, refreshing
+    67 				                                 ; HPOSP0/COLPM0 every frame internally
+    68 2045 4C 30 20		        jmp keepDucking        
+    69
+    70
+    71 2048			stop:
+    72 2048 20 7D 33		        jsr fightAttract
+    73 204B A5 B1		        lda shipX
+    74 204D 8D 00 D0		        sta HPOSP0               ; stop loop also needs to refresh,
+    75 2050 A9 1E		        lda #$1E                ; since it's another long-running
+    76 2052 8D 12 D0		        sta COLPM0               ; loop with the same characteristics
+    77 2055 4C 48 20		        jmp stop
+    78
+    79 				        .endp
+    80
+    81 				        
+    82 				; Data section
+    83 				;===================================================================
+    84
+    85 				        ; Bit order: bit 7 (leftmost) = screen-left, bit 0 (rightmost) =
+    86 				        ; screen-right, same convention as beowulfShape. Row count is
+    87 				        ; free — .len duckShape in the load loop above picks up
+    88 				        ; whatever you put here, add/remove rows as you like.
+    89 2058			        .local duckShape
+    90 2058 3C			        .byte %00111100     ; row 0  - crown of head
+    91 2059 74			        .byte %01110100     ; row 1  - head
+    92 205A 7F			        .byte %01111111     ; row 2  - head, eye level
+    93 205B 7E			        .byte %01111110     ; row 3  - beak
+    94 205C 7D			        .byte %01111101     ; row 4  - chin, head narrows
+    95 205D 38			        .byte %00111000     ; row 5  - neck
+    96 205E 38			        .byte %00111000     ; row 6  - neck/body transition
+    97 205F 38			        .byte %00111000     ; row 7  - body widening
+    98 2060 38			        .byte %00111000     ; row 8  - body, max width
+    99 2061 FF			        .byte %11111111     ; row 9  - body, max width
+   100 2062 FF			        .byte %11111111     ; row 10 - body
+   101 2063 7E			        .byte %01111110     ; row 11 - body narrowing
+   102 2064 3C			        .byte %00111100     ; row 12 - tail / body bottom
+   103 2065 24			        .byte %00100100     ; row 13 - legs
+   104 2066 24			        .byte %00100100     ; row 14 - legs
+   105 2067 66			        .byte %01100110     ; row 15 - webbed feet
+   106 				        .endl
+   107
+   108
+   109 02E0-02E1> 00 20		        run main
