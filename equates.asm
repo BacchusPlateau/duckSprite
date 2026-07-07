@@ -174,6 +174,9 @@ PMG_DMACTL_VALUE = $2E    ; full correct DMACTL value, not just one bit:
 
 shipX = $B1        ; sprite 0 current X position
 shipY = $B2        ; sprite 0 current Y position
+walkFrame = $B3    ; increments on ANY movement (either axis) — drives
+                   ; which walk-cycle frame shows, independent of
+                   ; shipX/shipY themselves
 ; =====================================================================
 ; Joystick input
 ; The OS polls the joystick hardware every frame and stores the

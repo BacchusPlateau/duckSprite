@@ -178,13 +178,16 @@ Source: equates.asm
    174
    175 = 00B1			shipX = $B1        ; sprite 0 current X position
    176 = 00B2			shipY = $B2        ; sprite 0 current Y position
-   177 				; =====================================================================
-   178 				; Joystick input
-   179 				; The OS polls the joystick hardware every frame and stores the
-   180 				; debounced result here for us — no need to touch the PIA directly.
-   181 				; =====================================================================
-   182 = 0278			STICK0  = $0278     ; joystick 1 direction bits, ACTIVE LOW (0=pressed):
-   183 				                    ; bit 0 = Up, bit 1 = Down, bit 2 = Left, bit 3 = Right
+   177 = 00B3			walkFrame = $B3    ; increments on ANY movement (either axis) — drives
+   178 				                   ; which walk-cycle frame shows, independent of
+   179 				                   ; shipX/shipY themselves
+   180 				; =====================================================================
+   181 				; Joystick input
+   182 				; The OS polls the joystick hardware every frame and stores the
+   183 				; debounced result here for us — no need to touch the PIA directly.
+   184 				; =====================================================================
+   185 = 0278			STICK0  = $0278     ; joystick 1 direction bits, ACTIVE LOW (0=pressed):
+   186 				                    ; bit 0 = Up, bit 1 = Down, bit 2 = Left, bit 3 = Right
      2 				        icl 'routines.asm'
 Source: routines.asm
      1 				; routines.asm
@@ -1650,243 +1653,258 @@ Source: routines.asm
      4 3608			        org $2000
      5
      6 2000			 .proc main
-     7 				 
-     8 2000-20F1> 20 9F 33	        jsr openGR8
+     7
+     8 2000-210F> 20 9F 33	        jsr openGR8
      9 2003 20 18 30		        jsr initPMG
-    10 				 
-    11 				        ; load the STARTING frame (duckShape1) into PM memory —
-    12 				        ; point spritePtr at it and let loadDuckFrame do the copy
-    13 2006 A9 D2		        lda #<duckShape1
-    14 2008 85 A6		        sta spritePtr_lo
-    15 200A A9 20		        lda #>duckShape1
-    16 200C 85 A7		        sta spritePtr_hi
-    17 200E 20 AB 20		        jsr loadDuckFrame
-    18 				 
-    19 				        ; set the duck's STARTING position only — waitFrames will
-    20 				        ; keep re-asserting HPOSP0 continuously from here on
-    21 2011 A9 5A 85 B1		        mva #90 shipX
-    22 2015 A9 10 85 B2		        mva #$10 shipY
-    23 				 
-    24 2019			keepDucking:
-    25 2019 A5 B1		        lda shipX               ; a = shipX
-    26 201B 8D 00 D0		        sta HPOSP0              ; push shipX to Player 0's horizontal position
-    27 				 
-    28 201E 20 8A 20		        jsr eraseDuckFrame      ; clear the OLD row — must happen before
-    29 				                                ; shipY changes below, or we'd erase the
-    30 				                                ; NEW position instead of the old one
-    31 				 
-    32 2021 AD 78 02		        lda STICK0
-    33 2024 29 04		        and #%00000100      ; isolate bit 2 (Left)
-    34 2026 F0 03		        beq isLeft
-    35 2028 4C 2D 20		        jmp checkRight
-    36 202B			isLeft:
-    37 202B C6 B1		        dec shipX
-    38 				 
-    39 202D			checkRight:
-    40 202D AD 78 02		        lda STICK0
-    41 2030 29 08		        and #%00001000      ; isolate bit 3 (Right)
-    42 2032 F0 03		        beq isRight
-    43 2034 4C 39 20		        jmp checkUp
-    44 2037			isRight:
-    45 2037 E6 B1		        inc shipX
-    46 				 
-    47 2039			checkUp:
-    48 2039 AD 78 02		        lda STICK0
-    49 203C 29 01		        and #%00000001      ; isolate bit 0 (Up)
-    50 203E F0 03		        beq isUp
-    51 2040 4C 45 20		        jmp checkDown
-    52 2043			isUp:
-    53 2043 C6 B2		        dec shipY
-    54 				 
-    55 2045			checkDown:
-    56 2045 AD 78 02		        lda STICK0
-    57 2048 29 02		        and #%00000010      ; isolate bit 1 (Down)
-    58 204A F0 03		        beq isDown
-    59 204C 4C 51 20		        jmp doneReading
-    60 204F			isDown:
-    61 204F E6 B2		        inc shipY
-    62 				 
-    63 2051			doneReading:
-    64 				 
-    65 				        ; --- pick this step's walk-cycle frame ---
-    66 				        ; even shipX -> duckShape1, odd shipX -> duckShape2
-    67 				 
-    68 2051 A5 B1		        lda shipX
-    69 2053 29 01		        and #%00000001           ; isolate bit 0 (the "is it odd" bit)
-    70 2055 F0 0B		        beq useFrame1
-    71 				 
-    72 2057 A9 E2		        lda #<duckShape2
-    73 2059 85 A6		        sta spritePtr_lo
-    74 205B A9 20		        lda #>duckShape2
-    75 205D 85 A7		        sta spritePtr_hi
-    76 205F 4C 6A 20		        jmp doLoad
-    77 				 
-    78 2062			useFrame1:
-    79 2062 A9 D2		        lda #<duckShape1
-    80 2064 85 A6		        sta spritePtr_lo
-    81 2066 A9 20		        lda #>duckShape1
-    82 2068 85 A7		        sta spritePtr_hi
-    83 				 
-    84 206A			doLoad:
-    85 206A 20 AB 20		        jsr loadDuckFrame        ; copy whichever table we just pointed at
-    86 				 
-    87 206D A9 1E		        lda #$1E                 ; TODO: this should be a variable in equates
-    88 206F 8D 12 D0		        sta COLPM0                ; color for Player 0
-    89 				 
-    90 2072 A2 05		        ldx #5                  ; frames to hold before the next step
-    91 2074 20 00 32		        jsr waitFrames           ; holds here, refreshing HPOSP0/COLPM0
-    92 				                                 ; every frame internally
-    93 2077 4C 19 20		        jmp keepDucking
-    94 				 
-    95 				 
-    96 207A			stop:
-    97 207A 20 7D 33		        jsr fightAttract
-    98 207D A5 B1		        lda shipX
-    99 207F 8D 00 D0		        sta HPOSP0               ; stop loop also needs to refresh,
-   100 2082 A9 1E		        lda #$1E                ; since it's another long-running
-   101 2084 8D 12 D0		        sta COLPM0               ; loop with the same characteristics
-   102 2087 4C 7A 20		        jmp stop
-   103 				 
-   104 				        .endp
-   105
+    10
+    11 				        ; set the duck's STARTING position BEFORE the first draw —
+    12 				        ; loadDuckFrame reads shipY to know where to draw, so it must
+    13 				        ; already hold a real value, not whatever garbage zero-page
+    14 				        ; happened to have at boot
+    15 2006 A9 5A 85 B1		        mva #90 shipX
+    16 200A A9 00 85 B2		        mva #0 shipY
+    17 200E A9 00 85 B3		        mva #0 walkFrame
+    18
+    19 				        ; load the STARTING frame (duckShape1) into PM memory —
+    20 				        ; point spritePtr at it and let loadDuckFrame do the copy
+    21 2012 A9 F0		        lda #<duckShape1
+    22 2014 85 A6		        sta spritePtr_lo
+    23 2016 A9 20		        lda #>duckShape1
+    24 2018 85 A7		        sta spritePtr_hi
+    25 201A 20 A8 20		        jsr loadDuckFrame
+    26
+    27 201D			keepDucking:
+    28 201D A5 B1		        lda shipX               ; a = shipX
+    29 201F 8D 00 D0		        sta HPOSP0              ; push shipX to Player 0's horizontal position
+    30
+    31 2022 20 CF 20		        jsr eraseDuckFrame      ; clear the OLD row — must happen before
+    32 				                                ; shipY changes below, or we'd erase the
+    33 				                                ; NEW position instead of the old one
+    34
+    35 2025 A9 00 85 83		        mva #0 temp_lo          ; "did we move this step?" flag — reused
+    36 				                                ; zero-page var, unused elsewhere here
+    37
+    38 2029 AD 78 02		        lda STICK0
+    39 202C 29 04		        and #%00000100      ; isolate bit 2 (Left)
+    40 202E F0 03		        beq isLeft
+    41 2030 4C 39 20		        jmp checkRight
+    42 2033			isLeft:
+    43 2033 C6 B1		        dec shipX
+    44 2035 A9 01 85 83		        mva #1 temp_lo
+    45
+    46 2039			checkRight:
+    47 2039 AD 78 02		        lda STICK0
+    48 203C 29 08		        and #%00001000      ; isolate bit 3 (Right)
+    49 203E F0 03		        beq isRight
+    50 2040 4C 49 20		        jmp checkUp
+    51 2043			isRight:
+    52 2043 E6 B1		        inc shipX
+    53 2045 A9 01 85 83		        mva #1 temp_lo
+    54
+    55 2049			checkUp:
+    56 2049 AD 78 02		        lda STICK0
+    57 204C 29 01		        and #%00000001      ; isolate bit 0 (Up)
+    58 204E F0 03		        beq isUp
+    59 2050 4C 59 20		        jmp checkDown
+    60 2053			isUp:
+    61 2053 C6 B2		        dec shipY
+    62 2055 A9 01 85 83		        mva #1 temp_lo
+    63
+    64 2059			checkDown:
+    65 2059 AD 78 02		        lda STICK0
+    66 205C 29 02		        and #%00000010      ; isolate bit 1 (Down)
+    67 205E F0 03		        beq isDown
+    68 2060 4C 69 20		        jmp doneReading
+    69 2063			isDown:
+    70 2063 E6 B2		        inc shipY
+    71 2065 A9 01 85 83		        mva #1 temp_lo
+    72
+    73 2069			doneReading:
+    74 2069 A5 83		        lda temp_lo             ; did ANY direction fire this step?
+    75 206B F0 02		        beq noFlip              ; no movement at all -> don't flip
+    76 206D E6 B3		        inc walkFrame           ; exactly ONE increment per step,
+    77 				                                ; no matter how many axes moved
+    78 206F			noFlip:
+    79
+    80 				        ; --- pick this step's walk-cycle frame ---
+    81 				        ; even walkFrame -> duckShape1, odd walkFrame -> duckShape2
+    82 				        ; walkFrame now increments once per MOVED STEP, not once per
+    83 				        ; axis — so diagonals flip the same as straight movement
+    84
+    85 206F A5 B3		        lda walkFrame
+    86 2071 29 01		        and #%00000001           ; isolate bit 0 (the "is it odd" bit)
+    87 2073 F0 0B		        beq useFrame1
+    88
+    89 2075 A9 00		        lda #<duckShape2
+    90 2077 85 A6		        sta spritePtr_lo
+    91 2079 A9 21		        lda #>duckShape2
+    92 207B 85 A7		        sta spritePtr_hi
+    93 207D 4C 88 20		        jmp doLoad
+    94
+    95 2080			useFrame1:
+    96 2080 A9 F0		        lda #<duckShape1
+    97 2082 85 A6		        sta spritePtr_lo
+    98 2084 A9 20		        lda #>duckShape1
+    99 2086 85 A7		        sta spritePtr_hi
+   100
+   101 2088			doLoad:
+   102 2088 20 A8 20		        jsr loadDuckFrame        ; copy whichever table we just pointed at
+   103
+   104 208B A9 1E		        lda #$1E                 ; TODO: this should be a variable in equates
+   105 208D 8D 12 D0		        sta COLPM0                ; color for Player 0
    106
-   107
-   108 				;=========================================================================
-   109 				; eraseDuckFrame
-   110 				; Zeroes 16 bytes at Player 0's CURRENT row (same address math as
-   111 				; loadDuckFrame). Call this BEFORE shipY changes, so it clears where
-   112 				; the duck IS, not where it's about to go — PM memory doesn't clear
-   113 				; itself, so skipping this leaves a frozen duplicate duck behind
-   114 				; every time you move vertically.
-   115 				;=========================================================================
-   116 208A			        .proc eraseDuckFrame
-   117 				 
-   118 208A A9 10		        lda #<(PMBASE+$0200+16)
-   119 208C 18			        clc
-   120 208D 65 B2		        adc shipY
-   121 208F 85 85		        sta scrptr_lo
-   122 				 
-   123 2091 A9 52		        lda #>(PMBASE+$0200+16)
-   124 2093 69 00		        adc #0
-   125 2095 85 86		        sta scrptr_hi
-   126 				 
-   127 2097 A2 00		        ldx #0
-   128 2099			eraseLoop:
-   129 2099 A0 00		        ldy #0
-   130 209B A9 00		        lda #0
-   131 209D 91 85		        sta (scrptr_lo),y
-   132 				 
-   133 209F E6 85		        inc scrptr_lo
-   134 20A1 D0 02		        bne eraseNoCarry
-   135 20A3 E6 86		        inc scrptr_hi
-   136 20A5			eraseNoCarry:
-   137 20A5 E8			        inx
-   138 20A6 E0 10		        cpx #16
-   139 20A8 D0 EF		        bne eraseLoop
-   140 				 
-   141 20AA 60			        rts
-   142 				        .endp
-   143 				 
-   144
-   145
-   146 				;=========================================================================
-   147 				; loadDuckFrame
-   148 				; Copies a 16-byte duck walk-cycle frame into Player 0's visible PM
-   149 				; memory (PMBASE + $0200 + 16, combined here at assemble time since
-   150 				; none of those three values change at runtime).
-   151 				; ON ENTRY: spritePtr_lo/spritePtr_hi point at a 16-byte frame table
-   152 				;           (duckShape1 or duckShape2)
-   153 				; ON EXIT:  spritePtr_lo/spritePtr_hi have been walked forward by 16 —
-   154 				;           reload them before calling again
-   155 				;=========================================================================
-   156 20AB			        .proc loadDuckFrame
+   107 2090 A2 05		        ldx #5                  ; frames to hold before the next step
+   108 2092 20 00 32		        jsr waitFrames           ; holds here, refreshing HPOSP0/COLPM0
+   109 				                                 ; every frame internally
+   110 2095 4C 1D 20		        jmp keepDucking
+   111
+   112
+   113 2098			stop:
+   114 2098 20 7D 33		        jsr fightAttract
+   115 209B A5 B1		        lda shipX
+   116 209D 8D 00 D0		        sta HPOSP0               ; stop loop also needs to refresh,
+   117 20A0 A9 1E		        lda #$1E                ; since it's another long-running
+   118 20A2 8D 12 D0		        sta COLPM0               ; loop with the same characteristics
+   119 20A5 4C 98 20		        jmp stop
+   120
+   121 				        .endp
+   122
+   123
+   124 				;=========================================================================
+   125 				; loadDuckFrame
+   126 				; Copies a 16-byte duck walk-cycle frame into Player 0's visible PM
+   127 				; memory (PMBASE + $0200 + 16, combined here at assemble time since
+   128 				; none of those three values change at runtime).
+   129 				; ON ENTRY: spritePtr_lo/spritePtr_hi point at a 16-byte frame table
+   130 				;           (duckShape1 or duckShape2)
+   131 				; ON EXIT:  spritePtr_lo/spritePtr_hi have been walked forward by 16 —
+   132 				;           reload them before calling again
+   133 				;=========================================================================
+   134 20A8			        .proc loadDuckFrame
+   135 				 
+   136 				        ; Target row = playfield top (PMBASE+$0200+16) + shipY.
+   137 				        ; shipY=0 means "top of the visible screen" — the fixed
+   138 				        ; +16 offset is baked into this proc so callers never need
+   139 				        ; to think about PM memory layout, only screen position.
+   140 20A8 A9 10		        lda #<(PMBASE+$0200+16)
+   141 20AA 18			        clc
+   142 20AB 65 B2		        adc shipY               ; no '#' — read the BYTE STORED at
+   143 				                                 ; shipY, not the address itself
+   144 20AD 85 85		        sta scrptr_lo
+   145 				 
+   146 20AF A9 52		        lda #>(PMBASE+$0200+16)
+   147 20B1 69 00		        adc #0                  ; propagate any carry out of the low
+   148 				                                 ; byte add above — do NOT clc here,
+   149 				                                 ; we want to keep that carry
+   150 20B3 85 86		        sta scrptr_hi
+   151 				 
+   152 20B5 A2 00		        ldx #0
+   153 20B7			frameLoop:
+   154 20B7 A0 00		        ldy #0
+   155 20B9 B1 A6		        lda (spritePtr_lo),y
+   156 20BB 91 85		        sta (scrptr_lo),y
    157 				 
-   158 				        ; Target row = playfield top (PMBASE+$0200+16) + shipY.
-   159 				        ; shipY=0 means "top of the visible screen" — the fixed
-   160 				        ; +16 offset is baked into this proc so callers never need
-   161 				        ; to think about PM memory layout, only screen position.
-   162 20AB A9 10		        lda #<(PMBASE+$0200+16)
-   163 20AD 18			        clc
-   164 20AE 65 B2		        adc shipY               ; no '#' — read the BYTE STORED at
-   165 				                                 ; shipY, not the address itself
-   166 20B0 85 85		        sta scrptr_lo
-   167 				 
-   168 20B2 A9 52		        lda #>(PMBASE+$0200+16)
-   169 20B4 69 00		        adc #0                  ; propagate any carry out of the low
-   170 				                                 ; byte add above — do NOT clc here,
-   171 				                                 ; we want to keep that carry
-   172 20B6 85 86		        sta scrptr_hi
-   173 				 
-   174 20B8 A2 00		        ldx #0
-   175 20BA			frameLoop:
-   176 20BA A0 00		        ldy #0
-   177 20BC B1 A6		        lda (spritePtr_lo),y
-   178 20BE 91 85		        sta (scrptr_lo),y
-   179 				 
-   180 20C0 E6 A6		        inc spritePtr_lo
-   181 20C2 D0 02		        bne spNoCarry
-   182 20C4 E6 A7		        inc spritePtr_hi
-   183 20C6			spNoCarry:
-   184 20C6 E6 85		        inc scrptr_lo
-   185 20C8 D0 02		        bne scNoCarry
-   186 20CA E6 86		        inc scrptr_hi
-   187 20CC			scNoCarry:
-   188 20CC E8			        inx
-   189 20CD E0 10		        cpx #16                  ; both frames MUST be 16 bytes for this
-   190 20CF D0 E9		        bne frameLoop            ; fixed count to be safe
-   191 				 
-   192 20D1 60			        rts
-   193 				        .endp
-   194
-   195
-   196 				; Data section
-   197 				;===================================================================
+   158 20BD E6 A6		        inc spritePtr_lo
+   159 20BF D0 02		        bne spNoCarry
+   160 20C1 E6 A7		        inc spritePtr_hi
+   161 20C3			spNoCarry:
+   162 20C3 E6 85		        inc scrptr_lo
+   163 20C5 D0 02		        bne scNoCarry
+   164 20C7 E6 86		        inc scrptr_hi
+   165 20C9			scNoCarry:
+   166 20C9 E8			        inx
+   167 20CA E0 10		        cpx #16                  ; both frames MUST be 16 bytes for this
+   168 20CC D0 E9		        bne frameLoop            ; fixed count to be safe
+   169 				 
+   170 20CE 60			        rts
+   171 				        .endp
+   172
+   173
+   174 				;=========================================================================
+   175 				; eraseDuckFrame
+   176 				; Zeroes 16 bytes at Player 0's CURRENT row (same address math as
+   177 				; loadDuckFrame). Call this BEFORE shipY changes, so it clears where
+   178 				; the duck IS, not where it's about to go — PM memory doesn't clear
+   179 				; itself, so skipping this leaves a frozen duplicate duck behind
+   180 				; every time you move vertically.
+   181 				;=========================================================================
+   182 20CF			        .proc eraseDuckFrame
+   183
+   184 20CF A9 10		        lda #<(PMBASE+$0200+16)
+   185 20D1 18			        clc
+   186 20D2 65 B2		        adc shipY
+   187 20D4 85 85		        sta scrptr_lo
+   188
+   189 20D6 A9 52		        lda #>(PMBASE+$0200+16)
+   190 20D8 69 00		        adc #0
+   191 20DA 85 86		        sta scrptr_hi
+   192
+   193 20DC A2 00		        ldx #0
+   194 20DE			eraseLoop:
+   195 20DE A0 00		        ldy #0
+   196 20E0 A9 00		        lda #0
+   197 20E2 91 85		        sta (scrptr_lo),y
    198
-   199 				        ; Bit order: bit 7 (leftmost) = screen-left, bit 0 (rightmost) =
-   200 				        ; screen-right, same convention as beowulfShape. Row count is
-   201 				        ; free — .len duckShape in the load loop above picks up
-   202 				        ; whatever you put here, add/remove rows as you like.
-   203 20D2			        .local duckShape1
-   204 20D2 3C			        .byte %00111100     ; row 0  - crown of head
-   205 20D3 74			        .byte %01110100     ; row 1  - head
-   206 20D4 7F			        .byte %01111111     ; row 2  - head, eye level
-   207 20D5 7E			        .byte %01111110     ; row 3  - beak
-   208 20D6 7D			        .byte %01111101     ; row 4  - chin, head narrows
-   209 20D7 38			        .byte %00111000     ; row 5  - neck
-   210 20D8 38			        .byte %00111000     ; row 6  - neck/body transition
-   211 20D9 38			        .byte %00111000     ; row 7  - body widening
-   212 20DA 38			        .byte %00111000     ; row 8  - body, max width
-   213 20DB FF			        .byte %11111111     ; row 9  - body, max width
-   214 20DC FF			        .byte %11111111     ; row 10 - body
-   215 20DD 7E			        .byte %01111110     ; row 11 - body narrowing
-   216 20DE 3C			        .byte %00111100     ; row 12 - tail / body bottom
-   217 20DF 24			        .byte %00100100     ; row 13 - legs
-   218 20E0 64			        .byte %01100100     ; row 14 - legs
-   219 20E1 06			        .byte %00000110     ; row 15 - webbed feet
-   220 				        .endl
-   221
-   222 				        ; identical clone of duckShape — edit this one's legs/wing rows
-   223 				        ; to create the second walk-cycle pose (frame length can differ
-   224 				        ; from duckShape's if you use .len duckShape2 wherever this
-   225 				        ; table's row count matters)
-   226 20E2			        .local duckShape2
-   227 20E2 3C			        .byte %00111100     ; row 0  - crown of head
-   228 20E3 74			        .byte %01110100     ; row 1  - head
-   229 20E4 7F			        .byte %01111111     ; row 2  - head, eye level
-   230 20E5 7F			        .byte %01111111     ; row 3  - beak
-   231 20E6 7C			        .byte %01111100     ; row 4  - chin, head narrows
-   232 20E7 38			        .byte %00111000     ; row 5  - neck
-   233 20E8 38			        .byte %00111000     ; row 6  - neck/body transition
-   234 20E9 38			        .byte %00111000     ; row 7  - body widening
-   235 20EA 38			        .byte %00111000     ; row 8  - body, max width
-   236 20EB 7E			        .byte %01111110     ; row 9  - body, max width
-   237 20EC FF			        .byte %11111111     ; row 10 - body
-   238 20ED 7E			        .byte %01111110     ; row 11 - body narrowing
-   239 20EE 3C			        .byte %00111100     ; row 12 - tail / body bottom
-   240 20EF 24			        .byte %00100100     ; row 13 - legs
-   241 20F0 26			        .byte %00100110     ; row 14 - legs
-   242 20F1 60			        .byte %01100000     ; row 15 - webbed feet
-   243 				        .endl
-   244
-   245
-   246 02E0-02E1> 00 20		        run main
+   199 20E4 E6 85		        inc scrptr_lo
+   200 20E6 D0 02		        bne eraseNoCarry
+   201 20E8 E6 86		        inc scrptr_hi
+   202 20EA			eraseNoCarry:
+   203 20EA E8			        inx
+   204 20EB E0 10		        cpx #16
+   205 20ED D0 EF		        bne eraseLoop
+   206
+   207 20EF 60			        rts
+   208 				        .endp
+   209
+   210
+   211 				; Data section
+   212 				;===================================================================
+   213
+   214 				        ; Bit order: bit 7 (leftmost) = screen-left, bit 0 (rightmost) =
+   215 				        ; screen-right, same convention as beowulfShape. Row count is
+   216 				        ; free — .len duckShape in the load loop above picks up
+   217 				        ; whatever you put here, add/remove rows as you like.
+   218 20F0			        .local duckShape1
+   219 20F0 3C			        .byte %00111100     ; row 0  - crown of head
+   220 20F1 74			        .byte %01110100     ; row 1  - head
+   221 20F2 7F			        .byte %01111111     ; row 2  - head, eye level
+   222 20F3 7E			        .byte %01111110     ; row 3  - beak
+   223 20F4 7D			        .byte %01111101     ; row 4  - chin, head narrows
+   224 20F5 38			        .byte %00111000     ; row 5  - neck
+   225 20F6 38			        .byte %00111000     ; row 6  - neck/body transition
+   226 20F7 38			        .byte %00111000     ; row 7  - body widening
+   227 20F8 38			        .byte %00111000     ; row 8  - body, max width
+   228 20F9 FF			        .byte %11111111     ; row 9  - body, max width
+   229 20FA FF			        .byte %11111111     ; row 10 - body
+   230 20FB 7E			        .byte %01111110     ; row 11 - body narrowing
+   231 20FC 3C			        .byte %00111100     ; row 12 - tail / body bottom
+   232 20FD 24			        .byte %00100100     ; row 13 - legs
+   233 20FE 64			        .byte %01100100     ; row 14 - legs
+   234 20FF 06			        .byte %00000110     ; row 15 - webbed feet
+   235 				        .endl
+   236
+   237 				        ; identical clone of duckShape — edit this one's legs/wing rows
+   238 				        ; to create the second walk-cycle pose (frame length can differ
+   239 				        ; from duckShape's if you use .len duckShape2 wherever this
+   240 				        ; table's row count matters)
+   241 2100			        .local duckShape2
+   242 2100 3C			        .byte %00111100     ; row 0  - crown of head
+   243 2101 74			        .byte %01110100     ; row 1  - head
+   244 2102 7F			        .byte %01111111     ; row 2  - head, eye level
+   245 2103 7F			        .byte %01111111     ; row 3  - beak
+   246 2104 7C			        .byte %01111100     ; row 4  - chin, head narrows
+   247 2105 38			        .byte %00111000     ; row 5  - neck
+   248 2106 38			        .byte %00111000     ; row 6  - neck/body transition
+   249 2107 38			        .byte %00111000     ; row 7  - body widening
+   250 2108 38			        .byte %00111000     ; row 8  - body, max width
+   251 2109 7E			        .byte %01111110     ; row 9  - body, max width
+   252 210A FF			        .byte %11111111     ; row 10 - body
+   253 210B 7E			        .byte %01111110     ; row 11 - body narrowing
+   254 210C 3C			        .byte %00111100     ; row 12 - tail / body bottom
+   255 210D 24			        .byte %00100100     ; row 13 - legs
+   256 210E 26			        .byte %00100110     ; row 14 - legs
+   257 210F 60			        .byte %01100000     ; row 15 - webbed feet
+   258 				        .endl
+   259
+   260
+   261 02E0-02E1> 00 20		        run main
