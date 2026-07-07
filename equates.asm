@@ -172,8 +172,8 @@ PMG_DMACTL_VALUE = $2E    ; full correct DMACTL value, not just one bit:
                           ; bit 5 = display list DMA enable (needed
                           ;         for ANY playfield to show at all!)                    
 
-shipX = $B1        ; tracks Beowulf's current X position
-
+shipX = $B1        ; sprite 0 current X position
+shipY = $B2        ; sprite 0 current Y position
 ; =====================================================================
 ; Joystick input
 ; The OS polls the joystick hardware every frame and stores the

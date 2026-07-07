@@ -4,10 +4,10 @@
         org $2000
 
  .proc main
-
+ 
         jsr openGR8
         jsr initPMG
-
+ 
         ; load the STARTING frame (duckShape1) into PM memory —
         ; point spritePtr at it and let loadDuckFrame do the copy
         lda #<duckShape1
@@ -15,63 +15,84 @@
         lda #>duckShape1
         sta spritePtr_hi
         jsr loadDuckFrame
-
+ 
         ; set the duck's STARTING position only — waitFrames will
         ; keep re-asserting HPOSP0 continuously from here on
         mva #90 shipX
-
+        mva #$10 shipY
+ 
 keepDucking:
         lda shipX               ; a = shipX
         sta HPOSP0              ; push shipX to Player 0's horizontal position
-
-        ; --- pick this step's walk-cycle frame ---
-        ; even shipX -> duckShape1, odd shipX -> duckShape2
-
+ 
+        jsr eraseDuckFrame      ; clear the OLD row — must happen before
+                                ; shipY changes below, or we'd erase the
+                                ; NEW position instead of the old one
+ 
         lda STICK0
         and #%00000100      ; isolate bit 2 (Left)
         beq isLeft
         jmp checkRight
 isLeft:
         dec shipX
-
+ 
 checkRight:
         lda STICK0
         and #%00001000      ; isolate bit 3 (Right)
         beq isRight
-        jmp doneReading
+        jmp checkUp
 isRight:
         inc shipX
-
+ 
+checkUp:
+        lda STICK0
+        and #%00000001      ; isolate bit 0 (Up)
+        beq isUp
+        jmp checkDown
+isUp:
+        dec shipY
+ 
+checkDown:
+        lda STICK0
+        and #%00000010      ; isolate bit 1 (Down)
+        beq isDown
+        jmp doneReading
+isDown:
+        inc shipY
+ 
 doneReading:
-
+ 
+        ; --- pick this step's walk-cycle frame ---
+        ; even shipX -> duckShape1, odd shipX -> duckShape2
+ 
         lda shipX
         and #%00000001           ; isolate bit 0 (the "is it odd" bit)
         beq useFrame1
-
+ 
         lda #<duckShape2
         sta spritePtr_lo
         lda #>duckShape2
         sta spritePtr_hi
         jmp doLoad
-
+ 
 useFrame1:
         lda #<duckShape1
         sta spritePtr_lo
         lda #>duckShape1
         sta spritePtr_hi
-
+ 
 doLoad:
         jsr loadDuckFrame        ; copy whichever table we just pointed at
-
+ 
         lda #$1E                 ; TODO: this should be a variable in equates
         sta COLPM0                ; color for Player 0
-
+ 
         ldx #5                  ; frames to hold before the next step
         jsr waitFrames           ; holds here, refreshing HPOSP0/COLPM0
                                  ; every frame internally
         jmp keepDucking
-
-
+ 
+ 
 stop:
         jsr fightAttract
         lda shipX
@@ -79,8 +100,47 @@ stop:
         lda #$1E                ; since it's another long-running
         sta COLPM0               ; loop with the same characteristics
         jmp stop
-
+ 
         .endp
+
+
+
+;=========================================================================
+; eraseDuckFrame
+; Zeroes 16 bytes at Player 0's CURRENT row (same address math as
+; loadDuckFrame). Call this BEFORE shipY changes, so it clears where
+; the duck IS, not where it's about to go — PM memory doesn't clear
+; itself, so skipping this leaves a frozen duplicate duck behind
+; every time you move vertically.
+;=========================================================================
+        .proc eraseDuckFrame
+ 
+        lda #<(PMBASE+$0200+16)
+        clc
+        adc shipY
+        sta scrptr_lo
+ 
+        lda #>(PMBASE+$0200+16)
+        adc #0
+        sta scrptr_hi
+ 
+        ldx #0
+eraseLoop:
+        ldy #0
+        lda #0
+        sta (scrptr_lo),y
+ 
+        inc scrptr_lo
+        bne eraseNoCarry
+        inc scrptr_hi
+eraseNoCarry:
+        inx
+        cpx #16
+        bne eraseLoop
+ 
+        rts
+        .endp
+ 
 
 
 ;=========================================================================
@@ -94,18 +154,29 @@ stop:
 ;           reload them before calling again
 ;=========================================================================
         .proc loadDuckFrame
-
-        lda #<(PMBASE+$210)
+ 
+        ; Target row = playfield top (PMBASE+$0200+16) + shipY.
+        ; shipY=0 means "top of the visible screen" — the fixed
+        ; +16 offset is baked into this proc so callers never need
+        ; to think about PM memory layout, only screen position.
+        lda #<(PMBASE+$0200+16)
+        clc
+        adc shipY               ; no '#' — read the BYTE STORED at
+                                 ; shipY, not the address itself
         sta scrptr_lo
-        lda #>(PMBASE+$210)
+ 
+        lda #>(PMBASE+$0200+16)
+        adc #0                  ; propagate any carry out of the low
+                                 ; byte add above — do NOT clc here,
+                                 ; we want to keep that carry
         sta scrptr_hi
-
+ 
         ldx #0
 frameLoop:
         ldy #0
         lda (spritePtr_lo),y
         sta (scrptr_lo),y
-
+ 
         inc spritePtr_lo
         bne spNoCarry
         inc spritePtr_hi
@@ -117,7 +188,7 @@ scNoCarry:
         inx
         cpx #16                  ; both frames MUST be 16 bytes for this
         bne frameLoop            ; fixed count to be safe
-
+ 
         rts
         .endp
 
