@@ -1,13 +1,13 @@
         icl 'equates.asm'
         icl 'routines.asm'
-
+ 
         org $2000
-
+ 
  .proc main
-
+ 
         jsr openGR8
         jsr initPMG
-
+ 
         ; set the duck's STARTING position BEFORE the first draw —
         ; loadDuckFrame reads shipY to know where to draw, so it must
         ; already hold a real value, not whatever garbage zero-page
@@ -15,7 +15,10 @@
         mva #90 shipX
         mva #0 shipY
         mva #0 walkFrame
-
+        mva #1 prevTrig         ; 1 = released — matches STRIG0's idle
+                                ; state, so the first real comparison
+                                ; in keepDucking isn't against garbage
+ 
         ; load the STARTING frame (duckShape1) into PM memory —
         ; point spritePtr at it and let loadDuckFrame do the copy
         lda #<duckShape1
@@ -23,18 +26,40 @@
         lda #>duckShape1
         sta spritePtr_hi
         jsr loadDuckFrame
-
+ 
 keepDucking:
         lda shipX               ; a = shipX
         sta HPOSP0              ; push shipX to Player 0's horizontal position
-
+ 
         jsr eraseDuckFrame      ; clear the OLD row — must happen before
                                 ; shipY changes below, or we'd erase the
                                 ; NEW position instead of the old one
-
+ 
         mva #0 temp_lo          ; "did we move this step?" flag — reused
                                 ; zero-page var, unused elsewhere here
-
+        mva #0 temp_hi          ; "did fire just get pressed?" flag —
+                                ; also reused, also unused elsewhere here
+ 
+        lda STRIG0
+        cmp prevTrig
+        beq noEdge              ; unchanged since last frame — no edge
+        cmp #0                  ; A still holds STRIG0 (cmp doesn't
+                                ; touch A) — is it currently PRESSED?
+        bne noEdge              ; changed, but to RELEASED — no fire
+ 
+        ; PRESS EDGE: was released last frame, is pressed now
+        mva #1 temp_hi           ; tell the color-set code below to
+                                 ; flash white this pass, just this once
+ 
+noEdge:
+        lda STRIG0               ; re-read explicitly — mva #1 temp_hi
+                                ; above clobbers A, so don't rely on
+                                ; it still holding the original value
+        sta prevTrig            ; remember THIS frame's state, so next
+                                ; frame's comparison is honest — easy
+                                ; to forget, and edge detection breaks
+                                ; silently if you do
+ 
         lda STICK0
         and #%00000100      ; isolate bit 2 (Left)
         beq isLeft
@@ -42,7 +67,7 @@ keepDucking:
 isLeft:
         dec shipX
         mva #1 temp_lo
-
+ 
 checkRight:
         lda STICK0
         and #%00001000      ; isolate bit 3 (Right)
@@ -51,7 +76,7 @@ checkRight:
 isRight:
         inc shipX
         mva #1 temp_lo
-
+ 
 checkUp:
         lda STICK0
         and #%00000001      ; isolate bit 0 (Up)
@@ -60,7 +85,7 @@ checkUp:
 isUp:
         dec shipY
         mva #1 temp_lo
-
+ 
 checkDown:
         lda STICK0
         and #%00000010      ; isolate bit 1 (Down)
@@ -69,47 +94,53 @@ checkDown:
 isDown:
         inc shipY
         mva #1 temp_lo
-
+ 
 doneReading:
         lda temp_lo             ; did ANY direction fire this step?
         beq noFlip              ; no movement at all -> don't flip
         inc walkFrame           ; exactly ONE increment per step,
                                 ; no matter how many axes moved
 noFlip:
-
+ 
         ; --- pick this step's walk-cycle frame ---
         ; even walkFrame -> duckShape1, odd walkFrame -> duckShape2
         ; walkFrame now increments once per MOVED STEP, not once per
         ; axis — so diagonals flip the same as straight movement
-
+ 
         lda walkFrame
         and #%00000001           ; isolate bit 0 (the "is it odd" bit)
         beq useFrame1
-
+ 
         lda #<duckShape2
         sta spritePtr_lo
         lda #>duckShape2
         sta spritePtr_hi
         jmp doLoad
-
+ 
 useFrame1:
         lda #<duckShape1
         sta spritePtr_lo
         lda #>duckShape1
         sta spritePtr_hi
-
+ 
 doLoad:
         jsr loadDuckFrame        ; copy whichever table we just pointed at
-
+ 
+        lda temp_hi              ; did fire get pressed THIS pass?
+        beq useYellow
+        lda #$0E                 ; white — proof-of-concept flash,
+        jmp setColor             ; this'll become the egg's color later
+useYellow:
         lda #$1E                 ; TODO: this should be a variable in equates
+setColor:
         sta COLPM0                ; color for Player 0
-
+ 
         ldx #5                  ; frames to hold before the next step
         jsr waitFrames           ; holds here, refreshing HPOSP0/COLPM0
                                  ; every frame internally
         jmp keepDucking
-
-
+ 
+ 
 stop:
         jsr fightAttract
         lda shipX
@@ -117,10 +148,10 @@ stop:
         lda #$1E                ; since it's another long-running
         sta COLPM0               ; loop with the same characteristics
         jmp stop
-
+ 
         .endp
-
-
+ 
+ 
 ;=========================================================================
 ; loadDuckFrame
 ; Copies a 16-byte duck walk-cycle frame into Player 0's visible PM
@@ -169,8 +200,8 @@ scNoCarry:
  
         rts
         .endp
-
-
+ 
+ 
 ;=========================================================================
 ; eraseDuckFrame
 ; Zeroes 16 bytes at Player 0's CURRENT row (same address math as
@@ -180,22 +211,22 @@ scNoCarry:
 ; every time you move vertically.
 ;=========================================================================
         .proc eraseDuckFrame
-
+ 
         lda #<(PMBASE+$0200+16)
         clc
         adc shipY
         sta scrptr_lo
-
+ 
         lda #>(PMBASE+$0200+16)
         adc #0
         sta scrptr_hi
-
+ 
         ldx #0
 eraseLoop:
         ldy #0
         lda #0
         sta (scrptr_lo),y
-
+ 
         inc scrptr_lo
         bne eraseNoCarry
         inc scrptr_hi
@@ -203,10 +234,79 @@ eraseNoCarry:
         inx
         cpx #16
         bne eraseLoop
-
+ 
         rts
         .endp
-
+ 
+ 
+;=========================================================================
+; loadEggFrame / eraseEggFrame
+; Same structure as loadDuckFrame/eraseDuckFrame, retargeted at the
+; shared missile section (MISSILE_BASE) instead of Player 0's private
+; section, and only EGG_FRAME_LEN (6) bytes instead of 16. Since
+; missiles 1-3 are never used, writing full bytes here is safe — bits
+; 2-7 just stay 0, no masking needed.
+; ON ENTRY: eggY holds the current row (same "0=top" convention as
+;           shipY)
+;=========================================================================
+        .proc loadEggFrame
+ 
+        lda #<MISSILE_BASE
+        clc
+        adc eggY
+        sta scrptr_lo
+ 
+        lda #>MISSILE_BASE
+        adc #0
+        sta scrptr_hi
+ 
+        ldx #0
+eggLoadLoop:
+        ldy #0
+        lda eggShape,x
+        sta (scrptr_lo),y
+ 
+        inc scrptr_lo
+        bne eggLoadNoCarry
+        inc scrptr_hi
+eggLoadNoCarry:
+        inx
+        cpx #EGG_FRAME_LEN
+        bne eggLoadLoop
+ 
+        rts
+        .endp
+ 
+ 
+        .proc eraseEggFrame
+ 
+        lda #<MISSILE_BASE
+        clc
+        adc eggY
+        sta scrptr_lo
+ 
+        lda #>MISSILE_BASE
+        adc #0
+        sta scrptr_hi
+ 
+        ldx #0
+eggEraseLoop:
+        ldy #0
+        lda #0
+        sta (scrptr_lo),y
+ 
+        inc scrptr_lo
+        bne eggEraseNoCarry
+        inc scrptr_hi
+eggEraseNoCarry:
+        inx
+        cpx #EGG_FRAME_LEN
+        bne eggEraseLoop
+ 
+        rts
+        .endp
+ 
+ 
 
 ; Data section
 ;===================================================================
@@ -257,5 +357,13 @@ eraseNoCarry:
         .byte %01100000     ; row 15 - webbed feet
         .endl
 
+        .local eggShape
+        .byte %00000000     ; row 0 - off
+        .byte %00000001     ; row 1 - right pixel only
+        .byte %00000011     ; row 2 - full width
+        .byte %00000011     ; row 3 - full width
+        .byte %00000001     ; row 4 - right pixel only
+        .byte %00000000     ; row 5 - off
+        .endl
 
         run main

@@ -141,6 +141,8 @@ GRACTL  = $D01D     ; GTIA register — Graphics Control
 
 ; --- Player 0 hardware registers ---
 HPOSP0  = $D000     ; horizontal position of Player 0 (one byte!)
+HPOSM0  = $D004     ; horizontal position of Missile 0 (own register,
+                    ; independent of HPOSP0)
                     ; THIS is the magic register — changing this one
                     ; byte instantly moves the sprite left/right with
                     ; no redraw needed at all, unlike our manual sprite
@@ -177,6 +179,20 @@ shipY = $B2        ; sprite 0 current Y position
 walkFrame = $B3    ; increments on ANY movement (either axis) — drives
                    ; which walk-cycle frame shows, independent of
                    ; shipX/shipY themselves
+prevTrig = $B4     ; STRIG0's value AS OF LAST FRAME — compare against
+                   ; the current STRIG0 read to detect a NEW press
+                   ; (edge), not just "currently held"
+eggX = $B5         ; egg missile's current X position (set once at
+                   ; launch, doesn't change mid-flight)
+eggY = $B6         ; egg missile's current Y position — same
+                   ; "0 = top of playfield" convention as shipY
+eggActive = $B7    ; 0 = no egg in flight, 1 = egg airborne, keep
+                   ; updating/drawing it each loop pass
+
+; missile memory is $0180 within the PM block, shared by all 4
+; missiles — only bits 0-1 of each byte belong to missile 0
+MISSILE_BASE = PMBASE+$0180
+EGG_FRAME_LEN = 6
 ; =====================================================================
 ; Joystick input
 ; The OS polls the joystick hardware every frame and stores the
@@ -184,3 +200,4 @@ walkFrame = $B3    ; increments on ANY movement (either axis) — drives
 ; =====================================================================
 STICK0  = $0278     ; joystick 1 direction bits, ACTIVE LOW (0=pressed):
                     ; bit 0 = Up, bit 1 = Down, bit 2 = Left, bit 3 = Right
+STRIG0  = $0284     ; joystick 1 fire button, ACTIVE LOW (0=pressed)
