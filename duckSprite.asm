@@ -157,29 +157,38 @@ noFlip:
 
 eggFlyUp:
         lda eggY
-        beq eggOffscreen         ; already at row 0 — nowhere left to go
-        dec eggY
+        cmp #EGG_SPEED           ; would this step underflow past 0?
+        bcc eggOffscreen         ; eggY < EGG_SPEED — yes, stop here
+        sec
+        sbc #EGG_SPEED
+        sta eggY
         jmp eggRedraw
 
 eggFlyDown:
         lda eggY
         cmp #EGG_Y_MAX
-        beq eggOffscreen
-        inc eggY
+        bcs eggOffscreen         ; eggY >= max already — stop here
+        clc
+        adc #EGG_SPEED
+        sta eggY
         jmp eggRedraw
 
 eggFlyLeft:
         lda eggX
-        cmp #EGG_X_MIN
-        beq eggOffscreen
-        dec eggX
+        cmp #(EGG_X_MIN+1)
+        bcc eggOffscreen         ; eggX <= EGG_X_MIN — stop here
+        sec
+        sbc #EGG_SPEED
+        sta eggX
         jmp eggRedraw
 
 eggFlyRight:
         lda eggX
         cmp #EGG_X_MAX
-        beq eggOffscreen
-        inc eggX
+        bcs eggOffscreen         ; eggX >= max already — stop here
+        clc
+        adc #EGG_SPEED
+        sta eggX
 
 eggRedraw:
         jsr loadEggFrame         ; redraw at the (possibly new) row —
@@ -228,7 +237,7 @@ useYellow:
 setColor:
         sta COLPM0                ; color for Player 0
  
-        ldx #4                  ; frames to hold before the next step
+        ldx #5                  ; frames to hold before the next step
         jsr waitFrames           ; holds here, refreshing HPOSP0/COLPM0
                                  ; every frame internally
         jmp keepDucking

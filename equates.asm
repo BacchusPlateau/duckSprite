@@ -205,10 +205,14 @@ DIR_RIGHT = 3
 EGG_X_MIN = 20
 EGG_X_MAX = 220
 EGG_Y_MAX = 95
+EGG_SPEED = 3      ; units per pass — duck moves 1/pass, so this
+                   ; makes the egg visibly outrun it
 
 ; missile memory is $0180 within the PM block, shared by all 4
 ; missiles — only bits 0-1 of each byte belong to missile 0
-MISSILE_BASE = PMBASE+$0180
+MISSILE_BASE = PMBASE+$0180+16   ; the +16 visible-top alignment applies
+                                 ; to the whole PM block, not just
+                                 ; players \xe2\x80\x94 this was missing before
 EGG_FRAME_LEN = 6
 ; =====================================================================
 ; Joystick input
