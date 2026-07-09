@@ -188,6 +188,23 @@ eggY = $B6         ; egg missile's current Y position — same
                    ; "0 = top of playfield" convention as shipY
 eggActive = $B7    ; 0 = no egg in flight, 1 = egg airborne, keep
                    ; updating/drawing it each loop pass
+lastDir = $B8      ; duck's most recent movement direction — updated
+                   ; in every direction branch, default 0 (Up) so a
+                   ; duck that's never moved fires upward
+eggDir = $B9       ; egg's direction, frozen from lastDir at the
+                   ; moment it's launched — doesn't change mid-flight
+                   ; even if the duck changes direction afterward
+
+; direction codes shared by lastDir/eggDir
+DIR_UP    = 0
+DIR_DOWN  = 1
+DIR_LEFT  = 2
+DIR_RIGHT = 3
+
+; egg travel bounds — rough screen edges, not pixel-precise
+EGG_X_MIN = 20
+EGG_X_MAX = 220
+EGG_Y_MAX = 95
 
 ; missile memory is $0180 within the PM block, shared by all 4
 ; missiles — only bits 0-1 of each byte belong to missile 0

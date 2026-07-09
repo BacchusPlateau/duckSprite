@@ -18,6 +18,11 @@
         mva #1 prevTrig         ; 1 = released — matches STRIG0's idle
                                 ; state, so the first real comparison
                                 ; in keepDucking isn't against garbage
+        mva #0 eggActive        ; no egg in flight at startup — must
+                                ; be set, not left as boot garbage,
+                                ; same reasoning as shipY earlier
+        mva #DIR_UP lastDir     ; default facing — a duck that's
+                                ; never moved fires upward
  
         ; load the STARTING frame (duckShape1) into PM memory —
         ; point spritePtr at it and let loadDuckFrame do the copy
@@ -48,9 +53,36 @@ keepDucking:
         bne noEdge              ; changed, but to RELEASED — no fire
  
         ; PRESS EDGE: was released last frame, is pressed now
-        mva #1 temp_hi           ; tell the color-set code below to
-                                 ; flash white this pass, just this once
- 
+        mva #1 temp_hi           ; flash confirmation regardless of
+                                 ; whether a new egg actually launches
+
+        lda eggActive
+        bne noEdge               ; already have an egg in flight —
+                                 ; ignore this press until it lands
+                                 ; (jumping to noEdge is safe: its
+                                 ; job below is unconditional anyway)
+
+        lda shipY
+        clc
+        adc #10                  ; spawn 10 rows down from the duck's
+                                 ; top — "where eggs emerge"
+        sta eggY
+
+        lda shipX
+        sta eggX
+
+        lda lastDir
+        sta eggDir               ; freeze direction NOW — the duck
+                                 ; may keep changing lastDir mid-flight,
+                                 ; but this egg's course is already set
+
+        mva #1 eggActive
+
+        jsr loadEggFrame         ; draw it immediately, don't wait
+                                 ; for the next pass
+        lda eggX
+        sta HPOSM0
+
 noEdge:
         lda STRIG0               ; re-read explicitly — mva #1 temp_hi
                                 ; above clobbers A, so don't rely on
@@ -67,6 +99,7 @@ noEdge:
 isLeft:
         dec shipX
         mva #1 temp_lo
+        mva #DIR_LEFT lastDir
  
 checkRight:
         lda STICK0
@@ -76,6 +109,7 @@ checkRight:
 isRight:
         inc shipX
         mva #1 temp_lo
+        mva #DIR_RIGHT lastDir
  
 checkUp:
         lda STICK0
@@ -85,6 +119,7 @@ checkUp:
 isUp:
         dec shipY
         mva #1 temp_lo
+        mva #DIR_UP lastDir
  
 checkDown:
         lda STICK0
@@ -94,6 +129,7 @@ checkDown:
 isDown:
         inc shipY
         mva #1 temp_lo
+        mva #DIR_DOWN lastDir
  
 doneReading:
         lda temp_lo             ; did ANY direction fire this step?
@@ -101,6 +137,63 @@ doneReading:
         inc walkFrame           ; exactly ONE increment per step,
                                 ; no matter how many axes moved
 noFlip:
+ 
+        ; --- egg flight, if one is currently active ---
+        lda eggActive
+        beq noEggFlight
+
+        jsr eraseEggFrame        ; clear the OLD position before moving
+                                 ; — needed on EVERY axis, not just Y,
+                                 ; same reason as the duck's own erase
+
+        lda eggDir
+        cmp #DIR_UP
+        beq eggFlyUp
+        cmp #DIR_DOWN
+        beq eggFlyDown
+        cmp #DIR_LEFT
+        beq eggFlyLeft
+        jmp eggFlyRight          ; only DIR_RIGHT left by elimination
+
+eggFlyUp:
+        lda eggY
+        beq eggOffscreen         ; already at row 0 — nowhere left to go
+        dec eggY
+        jmp eggRedraw
+
+eggFlyDown:
+        lda eggY
+        cmp #EGG_Y_MAX
+        beq eggOffscreen
+        inc eggY
+        jmp eggRedraw
+
+eggFlyLeft:
+        lda eggX
+        cmp #EGG_X_MIN
+        beq eggOffscreen
+        dec eggX
+        jmp eggRedraw
+
+eggFlyRight:
+        lda eggX
+        cmp #EGG_X_MAX
+        beq eggOffscreen
+        inc eggX
+
+eggRedraw:
+        jsr loadEggFrame         ; redraw at the (possibly new) row —
+                                 ; for Left/Right this row is unchanged,
+                                 ; only eggX/HPOSM0 actually moves
+        lda eggX
+        sta HPOSM0
+        jmp noEggFlight
+
+eggOffscreen:
+        mva #0 eggActive         ; egg's gone — stays erased, ready
+                                 ; for the next press to fire again
+
+noEggFlight:
  
         ; --- pick this step's walk-cycle frame ---
         ; even walkFrame -> duckShape1, odd walkFrame -> duckShape2
@@ -135,7 +228,7 @@ useYellow:
 setColor:
         sta COLPM0                ; color for Player 0
  
-        ldx #5                  ; frames to hold before the next step
+        ldx #4                  ; frames to hold before the next step
         jsr waitFrames           ; holds here, refreshing HPOSP0/COLPM0
                                  ; every frame internally
         jmp keepDucking
@@ -359,10 +452,10 @@ eggEraseNoCarry:
 
         .local eggShape
         .byte %00000000     ; row 0 - off
-        .byte %00000001     ; row 1 - right pixel only
+        .byte %00000000     ; row 1 - right pixel only
         .byte %00000011     ; row 2 - full width
         .byte %00000011     ; row 3 - full width
-        .byte %00000001     ; row 4 - right pixel only
+        .byte %00000000     ; row 4 - right pixel only
         .byte %00000000     ; row 5 - off
         .endl
 
